@@ -53,7 +53,7 @@
     }
     .screen {
         background: #171a21;
-        border: 1px solid #292e38;
+        border: 1px solid #0e1014;
         border-radius: 14px;
         overflow: hidden;
     }
@@ -68,6 +68,18 @@
         width: 100%;
         height: auto;
         background: black;
+    }
+    .screen .stage {
+        position: relative;
+        line-height: 0;
+    }
+    .screen canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
     }
     .empty {
         padding: 60px 20px;
@@ -96,6 +108,67 @@ const screens = new Map();
 
 function setStatus(text) {
     document.getElementById("status").textContent = text;
+}
+
+function drawCursor(state) {
+    const { img, canvas, latest } = state;
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    if (!nw || !nh || !latest) return;
+
+    if (canvas.width !== nw) canvas.width = nw;
+    if (canvas.height !== nh) canvas.height = nh;
+
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, nw, nh);
+
+    const mx = latest.mouse_x;
+    const my = latest.mouse_y;
+    if (mx == null || my == null) return;
+
+    const sx = nw / latest.width;
+    const sy = nh / latest.height;
+    const cx = mx * sx;
+    const cy = my * sy;
+
+    // Классический указатель мыши (стрелка) со сглаженными углами.
+    // Размер подобран относительно ширины кадра в пикселях canvas.
+    const k = Math.max(1, nw / 720) * 0.67;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(k, k);
+
+    // Контур стрелки (в единицах рисунка) со скруглёнными углами.
+    const pts = [
+        [0, 0], [0, 16], [4, 12], [7, 18], [9, 17], [6, 11], [12, 11]
+    ];
+    const r = 1.6; // радиус скругления углов
+    const len = pts.length;
+    ctx.beginPath();
+    for (let i = 0; i < len; i++) {
+        const [x0, y0] = pts[(i - 1 + len) % len];
+        const [x1, y1] = pts[i];
+        const [x2, y2] = pts[(i + 1) % len];
+        const d1 = Math.hypot(x1 - x0, y1 - y0) || 1;
+        const d2 = Math.hypot(x2 - x1, y2 - y1) || 1;
+        const rr = Math.min(r, d1 / 2, d2 / 2);
+        const sx0 = x1 - (x1 - x0) / d1 * rr;
+        const sy0 = y1 - (y1 - y0) / d1 * rr;
+        const ex0 = x1 + (x2 - x1) / d2 * rr;
+        const ey0 = y1 + (y2 - y1) / d2 * rr;
+        if (i === 0) ctx.moveTo(sx0, sy0);
+        else ctx.lineTo(sx0, sy0);
+        ctx.arcTo(x1, y1, ex0, ey0, rr);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = "#c8c8c8";
+    ctx.strokeStyle = "#6e6e6e";
+    ctx.lineWidth = 1.2 / k;
+    ctx.lineJoin = "round";
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
 }
 
 function connect() {
@@ -138,18 +211,27 @@ function connect() {
             const title = document.createElement("h2");
             title.textContent = `Экран ${data.monitor}`;
 
+            const stage = document.createElement("div");
+            stage.className = "stage";
+
             const img = document.createElement("img");
             img.alt = `Экран ${data.monitor}`;
 
+            const canvas = document.createElement("canvas");
+
+            stage.appendChild(img);
+            stage.appendChild(canvas);
             card.appendChild(title);
-            card.appendChild(img);
+            card.appendChild(stage);
             document.getElementById("screens").appendChild(card);
 
-            screens.set(data.monitor, { card, img });
+            img.onload = () => drawCursor(state);
+            screens.set(data.monitor, { card, img, canvas, latest: null });
         }
 
-        screens.get(data.monitor).img.src =
-            "data:image/jpeg;base64," + data.image;
+        const state = screens.get(data.monitor);
+        state.latest = data;
+        state.img.src = "data:image/jpeg;base64," + data.image;
 
         setStatus(`Передача активна • экранов: ${screens.size}`);
     };
