@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>See Screen</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        background: #0f1115;
+        color: #f4f4f5;
+        font-family: Segoe UI, Arial, sans-serif;
+    }
+    header {
+        padding: 22px;
+        border-bottom: 1px solid #242832;
+        background: #151820;
+    }
+    h1 { margin: 0 0 14px; }
+    .search {
+        display: flex;
+        gap: 10px;
+        max-width: 650px;
+    }
+    input, button {
+        border: 1px solid #343946;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 16px;
+    }
+    input {
+        flex: 1;
+        background: #0e1014;
+        color: white;
+        text-transform: uppercase;
+    }
+    button {
+        cursor: pointer;
+        background: #fff;
+        color: #111;
+        font-weight: 600;
+    }
+    #status {
+        margin-top: 12px;
+        color: #a9adb8;
+    }
+    main {
+        padding: 22px;
+        display: grid;
+        gap: 20px;
+        grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    }
+    .screen {
+        background: #171a21;
+        border: 1px solid #292e38;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+    .screen h2 {
+        margin: 0;
+        padding: 12px 16px;
+        font-size: 15px;
+        color: #c8cbd3;
+    }
+    .screen img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: black;
+    }
+    .empty {
+        padding: 60px 20px;
+        text-align: center;
+        color: #777d89;
+    }
+</style>
+</head>
+<body>
+<header>
+    <h1>See Screen</h1>
+    <div class="search">
+        <input id="id" maxlength="14" placeholder="Введите ID устройства">
+        <button onclick="connect()">Подключиться</button>
+    </div>
+    <div id="status">Введите ID, чтобы начать просмотр.</div>
+</header>
+
+<main id="screens">
+    <div class="empty">Экраны появятся здесь после подключения.</div>
+</main>
+
+<script>
+let socket = null;
+const screens = new Map();
+
+function setStatus(text) {
+    document.getElementById("status").textContent = text;
+}
+
+function connect() {
+    const id = document.getElementById("id").value.trim().toUpperCase();
+    if (!id) return;
+
+    if (socket) {
+        socket.close();
+        socket = null;
+    }
+
+    screens.clear();
+    document.getElementById("screens").innerHTML =
+        '<div class="empty">Подключение...</div>';
+
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(
+        `${protocol}//${location.host}/ws/viewer/${encodeURIComponent(id)}`
+    );
+
+    socket.onopen = () => {
+        setStatus("Подключено. Ожидание изображения...");
+        socket.send("viewer");
+    };
+
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type !== "frame") return;
+
+        let card = screens.get(data.monitor);
+
+        if (!card) {
+            if (screens.size === 0) {
+                document.getElementById("screens").innerHTML = "";
+            }
+
+            card = document.createElement("section");
+            card.className = "screen";
+
+            const title = document.createElement("h2");
+            title.textContent = `Экран ${data.monitor}`;
+
+            const img = document.createElement("img");
+            img.alt = `Экран ${data.monitor}`;
+
+            card.appendChild(title);
+            card.appendChild(img);
+            document.getElementById("screens").appendChild(card);
+
+            screens.set(data.monitor, { card, img });
+        }
+
+        screens.get(data.monitor).img.src =
+            "data:image/jpeg;base64," + data.image;
+
+        setStatus(`Передача активна • экранов: ${screens.size}`);
+    };
+
+    socket.onerror = () => {
+        setStatus("Ошибка подключения.");
+    };
+
+    socket.onclose = () => {
+        setStatus("Соединение закрыто.");
+    };
+}
+
+document.getElementById("id").addEventListener("keydown", e => {
+    if (e.key === "Enter") connect();
+});
+</script>
+</body>
+</html>
