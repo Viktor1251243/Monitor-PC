@@ -4,12 +4,22 @@ from collections import defaultdict
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware  # <-- 1. ДОБАВЛЕНО
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="See Screen")
+
+# <-- 2. ДОБАВЛЕНО: Разрешаем подключение с любых источников
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # device_id -> connected clients
 screen_sources = {}
